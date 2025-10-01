@@ -10,6 +10,10 @@ import (
 
 const CONFIG_FILE = ".gatorconfig.json"
 
+type State struct {
+	Config *Config
+}
+
 type Config struct {
 	DbUrl           string `json:"db_url"`
 	CurrentUserName string `json:"current_user_name"`
@@ -19,6 +23,8 @@ func (c *Config) SetUser(userName string) {
 	c.CurrentUserName = userName
 
 	c.write()
+
+	fmt.Println("New User has been set.")
 }
 
 func (c *Config) write() {
