@@ -33,8 +33,7 @@ func (c *Config) write() {
 		log.Fatal(err)
 	}
 
-	newConf := Read()
-	newConfBytes, err := json.Marshal(newConf)
+	newConfBytes, err := json.Marshal(c)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +44,7 @@ func (c *Config) write() {
 	}
 }
 
-func Read() Config {
+func Read() *Config {
 	filePath, err := getConfigFilePath()
 	if err != nil {
 		log.Fatal(err)
@@ -62,7 +61,7 @@ func Read() Config {
 		log.Fatal(err)
 	}
 
-	return c
+	return &c
 }
 
 func getConfigFilePath() (string, error) {
