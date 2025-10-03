@@ -1,9 +1,13 @@
 package internal
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	conf "github.com/Alb3G/gator/internal/config"
+	"github.com/Alb3G/gator/internal/database"
+	"github.com/google/uuid"
 )
 
 type Commands struct {
@@ -40,6 +44,23 @@ func LoginHandler(s *conf.State, cmd Command) error {
 	}
 
 	s.Config.SetUser(cmd.Args[1])
+
+	return nil
+}
+
+func RegisterHandler(s *conf.State, c Command) error {
+	uuid := uuid.New()
+	args := database.CreateUserParams{
+		ID:        uuid,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		UserName:  c.Args[1],
+	}
+	// waiting to see what we do with the user
+	_, err := s.Queries.CreateUser(context.Background(), args)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

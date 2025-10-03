@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/Alb3G/gator/internal/database"
 )
 
 const CONFIG_FILE = ".gatorconfig.json"
 
 type State struct {
-	Config *Config
+	Config  *Config
+	Queries *database.Queries
 }
 
 type Config struct {
