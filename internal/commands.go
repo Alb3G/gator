@@ -2,11 +2,16 @@ package internal
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"log"
+	"os"
 	"time"
 
 	conf "github.com/Alb3G/gator/internal/config"
 	"github.com/Alb3G/gator/internal/database"
+	utils "github.com/Alb3G/gator/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -20,6 +25,7 @@ func (c *Commands) Run(state *conf.State, cmd Command) error {
 
 	err := f(state, cmd)
 	if err != nil {
+		log.Fatal(err)
 		return err
 	}
 
@@ -43,24 +49,59 @@ func LoginHandler(s *conf.State, cmd Command) error {
 		return errors.New("missing username argument")
 	}
 
-	s.Config.SetUser(cmd.Args[1])
+	userName := cmd.Args[1]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := s.Queries.GetUserByName(ctx, userName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s.Config.SetUser(userName)
 
 	return nil
 }
 
 func RegisterHandler(s *conf.State, c Command) error {
+	// Add a util function in the future to validate correct userNames
+	if len(c.Args) != 2 {
+		log.Fatal("no user name provided")
+		os.Exit(1)
+	}
+
+	userName := c.Args[1]
 	uuid := uuid.New()
-	args := database.CreateUserParams{
+	dbArgs := database.CreateUserParams{
 		ID:        uuid,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-		UserName:  c.Args[1],
+		CreatedAt: utils.Now(),
+		UpdatedAt: utils.Now(),
+		UserName:  userName,
 	}
-	// waiting to see what we do with the user
-	_, err := s.Queries.CreateUser(context.Background(), args)
+
+	// Generate context with Timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	exists, err := s.Queries.GetUserByName(ctx, userName)
+	if err != nil && err != sql.ErrNoRows {
+		log.Fatal(err)
+	}
+
+	if exists != "" {
+		log.Fatal("user_name already exists in db")
+	}
+
+	user, err := s.Queries.CreateUser(ctx, dbArgs)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
+
+	fmt.Println("User created successfully")
+	fmt.Println(user)
+
+	s.Config.SetUser(userName)
 
 	return nil
 }

@@ -34,7 +34,7 @@ func main() {
 		AvailableCommands: make(map[string]func(*config.State, internal.Command) error),
 	}
 
-	// cmds.Register("login", internal.LoginHandler)
+	cmds.Register("login", internal.LoginHandler)
 	cmds.Register("register", internal.RegisterHandler)
 
 	cmd := internal.Command{
