@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	conf "github.com/Alb3G/gator/internal/config"
@@ -26,7 +25,6 @@ func (c *Commands) Run(state *conf.State, cmd Command) error {
 	err := f(state, cmd)
 	if err != nil {
 		log.Fatal(err)
-		return err
 	}
 
 	return nil
@@ -68,7 +66,6 @@ func RegisterHandler(s *conf.State, c Command) error {
 	// Add a util function in the future to validate correct userNames
 	if len(c.Args) != 2 {
 		log.Fatal("no user name provided")
-		os.Exit(1)
 	}
 
 	userName := c.Args[1]
@@ -102,6 +99,40 @@ func RegisterHandler(s *conf.State, c Command) error {
 	fmt.Println(user)
 
 	s.Config.SetUser(userName)
+
+	return nil
+}
+
+func ResetHandler(s *conf.State, c Command) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := s.Queries.Reset(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return nil
+}
+
+func Users(s *conf.State, c Command) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	users, err := s.Queries.GetUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if user.UserName == s.Config.CurrentUserName {
+			fmt.Printf("* %v (current)", s.Config.CurrentUserName)
+		} else {
+			fmt.Print("* ")
+			fmt.Println(user.UserName)
+		}
+
+	}
 
 	return nil
 }
