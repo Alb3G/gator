@@ -38,6 +38,8 @@ func main() {
 	cmds.Register("register", internal.RegisterHandler)
 	cmds.Register("reset", internal.ResetHandler)
 	cmds.Register("users", internal.Users)
+	cmds.Register("agg", internal.Agg)
+	cmds.Register("addfeed", internal.AddFeed)
 
 	cmd := internal.Command{
 		Name: args[1],

@@ -10,8 +10,9 @@ import (
 
 	conf "github.com/Alb3G/gator/internal/config"
 	"github.com/Alb3G/gator/internal/database"
+	rss "github.com/Alb3G/gator/internal/rss"
 	utils "github.com/Alb3G/gator/internal/utils"
-	"github.com/google/uuid"
+	uuid "github.com/google/uuid"
 )
 
 type Commands struct {
@@ -20,21 +21,17 @@ type Commands struct {
 
 // This method runs a given command with the provided state if it exists.
 func (c *Commands) Run(state *conf.State, cmd Command) error {
-	f := c.AvailableCommands[cmd.Name]
-
-	err := f(state, cmd)
-	if err != nil {
-		log.Fatal(err)
+	f, ok := c.AvailableCommands[cmd.Name]
+	if !ok {
+		return errors.New("command not found")
 	}
 
-	return nil
+	return f(state, cmd)
 }
 
 // This method registers a new handler function for a command name.
-func (c *Commands) Register(name string, f func(*conf.State, Command) error) error {
+func (c *Commands) Register(name string, f func(*conf.State, Command) error) {
 	c.AvailableCommands[name] = f
-
-	return nil
 }
 
 type Command struct {
@@ -81,12 +78,12 @@ func RegisterHandler(s *conf.State, c Command) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	exists, err := s.Queries.GetUserByName(ctx, userName)
+	userFromDb, err := s.Queries.GetUserByName(ctx, userName)
 	if err != nil && err != sql.ErrNoRows {
 		log.Fatal(err)
 	}
 
-	if exists != "" {
+	if userFromDb.UserName != "" {
 		log.Fatal("user_name already exists in db")
 	}
 
@@ -133,6 +130,56 @@ func Users(s *conf.State, c Command) error {
 		}
 
 	}
+
+	return nil
+}
+
+func Agg(s *conf.State, c Command) error {
+	feedURL := "https://www.wagslane.dev/index.xml"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rssStruct, err := rss.FetchFeed(ctx, feedURL)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(rssStruct)
+
+	return nil
+}
+
+func AddFeed(s *conf.State, c Command) error {
+	if len(c.Args) < 3 {
+		log.Fatal("missing required args feed_name or url")
+	}
+	name := c.Args[1]
+	url := c.Args[2]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	user, err := s.Queries.GetUserByName(ctx, s.Config.CurrentUserName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	feedArgs := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		Name:      name,
+		Url:       url,
+		UserID:    user.ID,
+	}
+
+	feed, err := s.Queries.CreateFeed(ctx, feedArgs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(feed)
 
 	return nil
 }
