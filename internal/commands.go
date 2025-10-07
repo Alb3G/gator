@@ -183,3 +183,24 @@ func AddFeed(s *conf.State, c Command) error {
 
 	return nil
 }
+
+func FeedsHandler(s *conf.State, c Command) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	feeds, err := s.Queries.GetFeeds(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, feed := range feeds {
+		user, err := s.Queries.GetUserById(ctx, feed.UserID)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(user.UserName)
+		fmt.Println(feed)
+	}
+
+	return nil
+}

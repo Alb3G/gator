@@ -40,6 +40,7 @@ func main() {
 	cmds.Register("users", internal.Users)
 	cmds.Register("agg", internal.Agg)
 	cmds.Register("addfeed", internal.AddFeed)
+	cmds.Register("feeds", internal.FeedsHandler)
 
 	cmd := internal.Command{
 		Name: args[1],
