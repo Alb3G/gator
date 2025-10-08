@@ -150,19 +150,33 @@ func Users(s *conf.State, c Command) error {
 }
 
 func Agg(s *conf.State, c Command) error {
-	feedURL := "https://www.wagslane.dev/index.xml"
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	rssStruct, err := rss.FetchFeed(ctx, feedURL)
+	if len(c.Args) < 2 {
+		return errors.New("missing time_between_reqs arg")
+	}
+	time_between_reqs, err := time.ParseDuration(c.Args[1])
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(rssStruct)
+	// feedURL := "https://www.wagslane.dev/index.xml"
 
-	return nil
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// defer cancel()
+
+	// rssStruct, err := rss.FetchFeed(ctx, feedURL)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// fmt.Println(rssStruct)
+
+	fmt.Printf("Collecting feeds every %v\n", time_between_reqs)
+
+	ticker := time.NewTicker(time_between_reqs)
+
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
+	}
 }
 
 func AddFeed(s *conf.State, c Command, user database.User) error {
@@ -219,6 +233,41 @@ func FeedsHandler(s *conf.State, c Command, user database.User) error {
 	for _, feed := range feeds {
 		fmt.Println(user.UserName)
 		fmt.Println(feed)
+	}
+
+	return nil
+}
+
+func scrapeFeeds(s *conf.State) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	lastFeedFetched, err := s.Queries.GetNextFeedToFetch(ctx)
+	if err != nil {
+		return err
+	}
+
+	feedFetchedParams := database.MarkFeedFetchedParams{
+		LastFetchedAt: sql.NullTime{
+			Time:  time.Now().UTC(),
+			Valid: true,
+		},
+		UpdatedAt: time.Now().UTC(),
+		ID:        lastFeedFetched.ID,
+	}
+
+	err = s.Queries.MarkFeedFetched(ctx, feedFetchedParams)
+	if err != nil {
+		return err
+	}
+
+	rssStruct, err := rss.FetchFeed(ctx, lastFeedFetched.Url)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range rssStruct.Channel.Item {
+		fmt.Println(item.Title)
 	}
 
 	return nil
