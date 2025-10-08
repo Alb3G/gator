@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	conf "github.com/Alb3G/gator/internal/config"
@@ -14,6 +13,11 @@ import (
 	utils "github.com/Alb3G/gator/internal/utils"
 	uuid "github.com/google/uuid"
 )
+
+type Command struct {
+	Name string
+	Args []string
+}
 
 type Commands struct {
 	AvailableCommands map[string]func(*conf.State, Command) error
@@ -34,9 +38,20 @@ func (c *Commands) Register(name string, f func(*conf.State, Command) error) {
 	c.AvailableCommands[name] = f
 }
 
-type Command struct {
-	Name string
-	Args []string
+func MiddlewareLoggedIn(handler func(s *conf.State, c Command, user database.User) error) func(s *conf.State, c Command) error {
+	return func(s *conf.State, c Command) error {
+		user, err := s.Queries.GetUserByName(context.Background(), s.Config.CurrentUserName)
+		if err != nil {
+			return err
+		}
+
+		err = handler(s, c, user)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
 }
 
 func LoginHandler(s *conf.State, cmd Command) error {
@@ -51,7 +66,7 @@ func LoginHandler(s *conf.State, cmd Command) error {
 
 	_, err := s.Queries.GetUserByName(ctx, userName)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	s.Config.SetUser(userName)
@@ -62,7 +77,7 @@ func LoginHandler(s *conf.State, cmd Command) error {
 func RegisterHandler(s *conf.State, c Command) error {
 	// Add a util function in the future to validate correct userNames
 	if len(c.Args) != 2 {
-		log.Fatal("no user name provided")
+		return errors.New("no user name provided")
 	}
 
 	userName := c.Args[1]
@@ -80,16 +95,16 @@ func RegisterHandler(s *conf.State, c Command) error {
 
 	userFromDb, err := s.Queries.GetUserByName(ctx, userName)
 	if err != nil && err != sql.ErrNoRows {
-		log.Fatal(err)
+		return err
 	}
 
 	if userFromDb.UserName != "" {
-		log.Fatal("user_name already exists in db")
+		return errors.New("user_name already exists in db")
 	}
 
 	user, err := s.Queries.CreateUser(ctx, dbArgs)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	fmt.Println("User created successfully")
@@ -106,7 +121,7 @@ func ResetHandler(s *conf.State, c Command) error {
 
 	err := s.Queries.Reset(ctx)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	return nil
@@ -150,20 +165,15 @@ func Agg(s *conf.State, c Command) error {
 	return nil
 }
 
-func AddFeed(s *conf.State, c Command) error {
+func AddFeed(s *conf.State, c Command, user database.User) error {
 	if len(c.Args) < 3 {
-		log.Fatal("missing required args feed_name or url")
+		return errors.New("missing required args feed_name or url")
 	}
 	name := c.Args[1]
 	url := c.Args[2]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	user, err := s.Queries.GetUserByName(ctx, s.Config.CurrentUserName)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	feedArgs := database.CreateFeedParams{
 		ID:        uuid.New(),
@@ -176,7 +186,20 @@ func AddFeed(s *conf.State, c Command) error {
 
 	feed, err := s.Queries.CreateFeed(ctx, feedArgs)
 	if err != nil {
-		log.Fatal(err)
+		return err
+	}
+
+	feed_follow_Args := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	}
+
+	_, err = s.Queries.CreateFeedFollow(ctx, feed_follow_Args)
+	if err != nil {
+		return err
 	}
 
 	fmt.Println(feed)
@@ -184,22 +207,84 @@ func AddFeed(s *conf.State, c Command) error {
 	return nil
 }
 
-func FeedsHandler(s *conf.State, c Command) error {
+func FeedsHandler(s *conf.State, c Command, user database.User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	feeds, err := s.Queries.GetFeeds(ctx)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	for _, feed := range feeds {
-		user, err := s.Queries.GetUserById(ctx, feed.UserID)
-		if err != nil {
-			log.Fatal(err)
-		}
 		fmt.Println(user.UserName)
 		fmt.Println(feed)
+	}
+
+	return nil
+}
+
+func Follow(s *conf.State, c Command, user database.User) error {
+	if len(c.Args) < 2 {
+		return errors.New("missing url arg")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	feed, err := s.Queries.GetFeedByURL(ctx, c.Args[1])
+	if err != nil {
+		return err
+	}
+
+	feed_follow_Args := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	}
+
+	inserted_feed_follow, err := s.Queries.CreateFeedFollow(ctx, feed_follow_Args)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%v followed: %v", user.UserName, inserted_feed_follow.FeedName)
+
+	return nil
+}
+
+func Following(s *conf.State, c Command, user database.User) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	feedFollowsByUser, err := s.Queries.GetFeedFollowsByUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, feed_follow := range feedFollowsByUser {
+		fmt.Println(feed_follow.FeedName)
+	}
+
+	return nil
+}
+
+func Unfollow(s *conf.State, c Command, user database.User) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	feed, err := s.Queries.GetFeedByURL(ctx, c.Args[1])
+	if err != nil {
+		return err
+	}
+
+	deleteParams := database.DeleteFeedFollowParams{UserID: user.ID, FeedID: feed.ID}
+
+	err = s.Queries.DeleteFeedFollow(ctx, deleteParams)
+	if err != nil {
+		return err
 	}
 
 	return nil
