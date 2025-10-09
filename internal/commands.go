@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	conf "github.com/Alb3G/gator/internal/config"
@@ -158,18 +159,6 @@ func Agg(s *conf.State, c Command) error {
 		return err
 	}
 
-	// feedURL := "https://www.wagslane.dev/index.xml"
-
-	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// defer cancel()
-
-	// rssStruct, err := rss.FetchFeed(ctx, feedURL)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// fmt.Println(rssStruct)
-
 	fmt.Printf("Collecting feeds every %v\n", time_between_reqs)
 
 	ticker := time.NewTicker(time_between_reqs)
@@ -267,7 +256,30 @@ func scrapeFeeds(s *conf.State) error {
 	}
 
 	for _, item := range rssStruct.Channel.Item {
-		fmt.Println(item.Title)
+		pubDate, err := utils.ParsePublishedDate(item.PubDate)
+		if err != nil {
+			log.Printf("Error parsing date: %v", err)
+			return err
+		}
+
+		postParams := database.CreatePostParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+			Title:     item.Title,
+			Url:       item.Link,
+			Description: sql.NullString{
+				String: item.Description,
+				Valid:  true,
+			},
+			PublishedAt: pubDate,
+			FeedID:      lastFeedFetched.ID,
+		}
+		_, err = s.Queries.CreatePost(ctx, postParams)
+		if err != nil {
+			log.Printf("Error creating post: %v", err)
+			return err
+		}
 	}
 
 	return nil
@@ -334,6 +346,34 @@ func Unfollow(s *conf.State, c Command, user database.User) error {
 	err = s.Queries.DeleteFeedFollow(ctx, deleteParams)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func Browse(s *conf.State, c Command, user database.User) error {
+	limit := utils.ParseLimit(c.Args, 2)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	postsParams := database.GetPostsByUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	}
+	posts, err := s.Queries.GetPostsByUser(ctx, postsParams)
+	if err != nil {
+		log.Printf("Error while getting posts from db: %v", err)
+		return err
+	}
+
+	if len(posts) == 0 {
+		log.Println("No posts found")
+		return nil
+	}
+
+	for _, post := range posts {
+		fmt.Println(post)
 	}
 
 	return nil

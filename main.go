@@ -44,6 +44,7 @@ func main() {
 	cmds.Register("follow", internal.MiddlewareLoggedIn(internal.Follow))
 	cmds.Register("following", internal.MiddlewareLoggedIn(internal.Following))
 	cmds.Register("unfollow", internal.MiddlewareLoggedIn(internal.Unfollow))
+	cmds.Register("browse", internal.MiddlewareLoggedIn(internal.Browse))
 
 	cmd := internal.Command{
 		Name: args[1],
